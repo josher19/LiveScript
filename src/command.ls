@@ -224,7 +224,40 @@ switch
       eval: !(code,,, cb) ->
         try res = vm.runInThisContext code, \repl catch then err = e
         cb err, res
-    rl.completer = server~complete
+    #rl.completer = server~complete
+    #LiveScript.REPL = rl
+    #LiveScript.server = server
+    
+    jscomplete = server~complete
+    
+    camelize ?= (s) -> s.replace /-[a-z]/g  -> it.char-at 1 .to-upper-case!
+    uncamelize = (s) -> s.replace /[a-z][A-Z]/g -> it.char-at(0) + "-" + it.char-at 1 .to-lower-case!
+    end-cap-letter = (s) -> s.replace /-$/, "[A-Z]"
+
+    complete = (line, cb) -> 
+      camel-line = camelize line 
+      nodashes = camel-line .replace /-$/, "" 
+      jscomplete nodashes, (err, completions) -> 
+          # no matches found, try again with dashes.
+          if !err and not completions[0].length and line.match "-" 
+                 jscomplete line, ((err, completions) -> cb err, completions) 
+          else 
+                 # Completions should be un-camelized
+                 # "upCaseName" ==> "up-case-name"
+                 if line.match "-" and completions?[0]?.map and completions[0].length
+                    lineRegex = /./;
+                    try lineRegex = new RegExp "^(" + end-cap-letter(line) + "|" + end-cap-letter(camel-line) + ")"
+                    try completions[0] = completions[0].filter (.match lineRegex) .map uncamelize
+                    completions[1] = line 
+                 cb err, completions
+                 
+    # complete "up-case-", console.log #=> null [ [ 'upCaseName' ], 'upCase' ]
+    # complete "cam-", console.log #=> null [ [], 'cam-' ]
+    # complete "cam", console.log #=> null [ [ 'camelize' ], 'cam' ]
+    # complete "to-", console.log #=> null [ [ 'to-locale-string', 'to-string' ], 'to-' ]
+
+    rl.completer = complete    
+    
   rl.on \SIGCONT rl.prompt
   rl.on \SIGINT !->
     if @line or code then say ''; reset! else @close!
